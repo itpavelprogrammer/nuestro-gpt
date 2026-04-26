@@ -1,190 +1,66 @@
-# GPT Telegram Bot
+# Обновление: убраны картинки + голосовые сообщения
 
-Telegram-бот с двумя функциями и **доступом по одобрению админа**:
-- 💬 **Чат с GPT** (выбор GPT-5 / GPT-5-mini / GPT-5-nano) с памятью контекста
-- 🎨 **Генерация изображений** через `gpt-image-2` (соотношение сторон + качество)
+## Что изменилось
 
-Хранение пользователей и истории — локальный SQLite.
+✅ Убран режим генерации картинок (всё, что связано с `gpt-image-2`)
+✅ Контекст диалога увеличен до **50 сообщений** (`HISTORY_LIMIT=50`)
+✅ Добавлена расшифровка голосовых сообщений через **OpenAI Whisper** (`whisper-1`)
+✅ Меню упрощено — теперь только выбор модели и сброс контекста
 
----
+## Как пользоваться голосом
 
-## Как работает доступ
+Просто пришли боту голосовое сообщение в Telegram — он:
+1. Скачает аудио
+2. Расшифрует его через Whisper
+3. Покажет тебе распознанный текст
+4. Отправит его в GPT и пришлёт ответ
 
-1. Новый пользователь пишет `/start`.
-2. Бот регистрирует заявку и отправляет всем админам (из `ADMIN_IDS`) карточку с кнопками **✅ Одобрить** / **❌ Отклонить**.
-3. Пользователь видит сообщение «Заявка отправлена, ожидай одобрения».
-4. Когда админ нажимает «Одобрить» — юзер получает уведомление и может пользоваться ботом.
-5. Если «Отклонить» — статус `blocked`, юзеру приходит отказ. Изменить решение можно через `/approve <id>` или `/block <id>`.
-
-Админы из `ADMIN_IDS` имеют доступ всегда и автоматически попадают в БД как `approved`.
-
----
-
-## Быстрый старт (локально)
-
-### 1. Получить токены и ID
-
-- **TELEGRAM_BOT_TOKEN** — напиши [@BotFather](https://t.me/BotFather), команда `/newbot`
-- **OPENAI_API_KEY** — https://platform.openai.com/api-keys
-- **ADMIN_IDS** — узнай свой Telegram ID у [@userinfobot](https://t.me/userinfobot)
-
-### 2. Запуск
-
-```bash
-cd bot
-cp .env.example .env
-# впиши TELEGRAM_BOT_TOKEN, OPENAI_API_KEY, ADMIN_IDS
-npm install
-npm run dev
-```
+Поддерживаются и обычные `audio`-файлы (mp3, m4a и т.п.).
 
 ---
 
-## Деплой на Railway (с volume для SQLite)
+## Какие файлы заменить
 
-Railway = самый простой хостинг для этого бота.
+Положи все `.ts` файлы из архива в **`bot/src/`** (плоская структура, как у тебя на GitHub), заменяя существующие:
 
-### 1. Подготовить репозиторий
+| Файл | Что делает |
+|---|---|
+| `config.ts` | Убраны `IMAGE_MODEL`, `IMAGE_SIZES`, `IMAGE_QUALITIES`. Добавлен `STT_MODEL=whisper-1`. `HISTORY_LIMIT` по умолчанию = 50. Модели: gpt-5.4 / -mini / -nano / -pro. |
+| `bot.ts` | Убраны команды `/text` и `/image`. Добавлены обработчики `message:voice` и `message:audio`. |
+| `handlers_text.ts` | Удалён режим image. Добавлена функция `handleVoice` для расшифровки голосовых. |
+| `handlers_start.ts` | Обновлён текст приветствия — упоминание голоса. |
+| `handlers_menu.ts` | Удалены кнопки режима/настроек картинок. Только модель + сброс. |
+| `keyboards_main.ts` | Только кнопки «Модель» и «Сбросить контекст». |
+| `keyboards_models.ts` | Без изменений по логике, для целостности. |
+| `keyboards_persistent.ts` | Постоянная кнопка «☰ Меню». |
+| `db_sessions.ts` | Убраны поля `mode`, `image_size`, `image_quality` из API (старая схема БД остаётся совместимой). |
+| `openai_voice.ts` | **НОВЫЙ.** Скачивает голосовой файл и отправляет в Whisper. |
 
-Запушь папку `bot/` (или весь репозиторий) на GitHub.
+## Файлы, которые можно УДАЛИТЬ (если они есть)
 
-### 2. Создать сервис
+- `keyboards_image.ts` — больше не нужен
+- `openai_image.ts` — больше не нужен
 
-1. https://railway.app → **New Project** → **Deploy from GitHub repo** → выбери репо.
-2. В настройках сервиса (**Settings → Source**) укажи **Root Directory** = `bot` (если бот лежит в подпапке).
-3. Railway автоматически подхватит Nixpacks и `railway.json`.
+## Переменные окружения (Railway / .env)
 
-### 3. Добавить Volume
-
-**Это критично** — без volume база `bot.db` будет стираться при каждом деплое.
-
-1. **Service → Settings → Volumes → + New Volume**
-2. **Mount Path:** `/data`
-3. **Size:** 1 GB (с запасом, реально нужно ~50 MB)
-
-### 4. Переменные окружения
-
-**Service → Variables → Raw Editor**, вставь:
+Проверь, что у тебя выставлено:
 
 ```
-TELEGRAM_BOT_TOKEN=твой_токен
-OPENAI_API_KEY=твой_ключ
-ADMIN_IDS=твой_telegram_id
-IMAGE_MODEL=gpt-image-2
-DEFAULT_TEXT_MODEL=gpt-5-mini
-HISTORY_LIMIT=20
+TELEGRAM_BOT_TOKEN=...
+OPENAI_API_KEY=...
+ADMIN_IDS=123456789
+DEFAULT_TEXT_MODEL=gpt-5.4-mini
+HISTORY_LIMIT=50
 DB_PATH=/data/bot.db
-LOG_LEVEL=info
-NODE_ENV=production
 ```
 
-⚠️ `DB_PATH=/data/bot.db` — путь должен совпадать с mount path volume.
-
-### 5. Deploy
-
-Railway сам соберёт (`npm install && npm run build`) и запустит (`npm start`). Логи — в **Deployments → View Logs**. Должно появиться:
+Можно (необязательно) добавить:
 ```
-🤖 Bot starting...
-✅ @your_bot is running (long polling)
+STT_MODEL=whisper-1
 ```
 
-### Обновление бота
+## ⚠️ Напоминание про модели
 
-Просто пушишь в Git → Railway автодеплоит. БД в `/data` сохраняется между деплоями.
-
----
-
-## Команды бота
-
-### Для пользователей
-- `/start` — главное меню (или заявка на доступ)
-- `/menu` — снова показать меню
-- `/model` — выбрать модель GPT
-- `/text` — режим чата
-- `/image` — режим генерации картинок
-- `/reset` — очистить историю диалога
-- `/help` — подсказка
-
-### Только для админов
-- `/users` — список пользователей со статусом (⏳ pending / ✅ approved / 🚫 blocked)
-- `/approve <telegram_id>` — выдать доступ
-- `/block <telegram_id>` — отозвать доступ
-
-Плюс админы получают карточки заявок с inline-кнопками одобрения / отклонения прямо в чате.
-
----
-
-## Меню (для одобренных)
-
-```
-💬 Текст (GPT)        🎨 Картинка (image-2)
-⚙️ Выбрать модель     📐 Настройки картинки
-🧹 Сбросить контекст
-```
-
-## Настройки изображения
-
-- **1024×1024** — квадрат 1:1
-- **1024×1536** — портрет 2:3
-- **1536×1024** — ландшафт 3:2
-
-Качество: `low` / `medium` / `high`.
-
----
-
-## Альтернативный деплой: Docker
-
-```bash
-docker build -t gpt-bot .
-docker run -d \
-  --name gpt-bot \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  --restart unless-stopped \
-  gpt-bot
-```
-
-Или **pm2** на VPS:
-```bash
-npm install -g pm2
-npm run build
-pm2 start dist/index.js --name gpt-bot
-pm2 save
-pm2 startup
-```
-
----
-
-## Структура
-
-```
-bot/
-├── src/
-│   ├── index.ts                # entry point
-│   ├── config.ts               # .env + парсинг ADMIN_IDS
-│   ├── bot.ts                  # сборка grammY-бота
-│   ├── middleware/
-│   │   └── access.ts           # guard: pending/approved/blocked
-│   ├── handlers/
-│   │   ├── start.ts            # /start, /menu, /help
-│   │   ├── menu.ts             # callback-кнопки меню
-│   │   ├── text.ts             # обработка текста (чат + картинки)
-│   │   └── admin.ts            # заявки, /users, /approve, /block
-│   ├── openai/                 # OpenAI SDK обёртки
-│   ├── db/                     # SQLite репозитории
-│   ├── keyboards/              # inline-клавиатуры
-│   └── utils/
-├── data/                       # bot.db (локально)
-├── .env.example
-├── Dockerfile
-├── railway.json
-└── ...
-```
-
-## Как работает контекст
-
-История диалога per `chat_id` хранится в `messages`. Перед каждым запросом в OpenAI берутся последние `HISTORY_LIMIT` сообщений. `/reset` чистит историю текущего чата.
-
-## Лицензия
-
-MIT
+`gpt-5.4 / -mini / -nano / -pro` — этих моделей в OpenAI пока нет.
+При первом запросе ты получишь ошибку `model_not_found`.
+Поменяй `DEFAULT_TEXT_MODEL` на реальную (например, `gpt-4o-mini`) или подожди релиза.
